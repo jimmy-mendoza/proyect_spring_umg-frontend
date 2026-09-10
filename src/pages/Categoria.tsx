@@ -1,4 +1,4 @@
-import { useEffect,useState, type ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import axios from "axios";
 
 import {
@@ -28,7 +28,7 @@ function Categorias() {
         try {
             const respuesta = await listarCategoriasActivas()
             setCategorias(respuesta.data)
-        }catch(error){
+        } catch (error) {
             console.error("Error al listar categorias", error)
         }
     }
@@ -36,66 +36,125 @@ function Categorias() {
     useEffect(() => {
         cargarCategorias()
     }, []);
-    
+
     const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+        const { name, value } = e.target;
+        setForm((prev) => ({ ...prev, [name]: value }));
     }
 
+    // Helper para extraer mensaje de error del backend
+    const obtenerMensajeError = (error: unknown): string => {
+        if (axios.isAxiosError(error)) {
+            return error.response?.data?.mensaje ?? error.message;
+        }
+        if (error instanceof Error) {
+            return error.message;
+        }
+        return "Ocurrió un error inesperado";
+    };
+
+    // Función para guardar en la bd, desde el back-end
+    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        try {
+            if (modoEdicion && form.idCategoria !== null) {
+                await actualizarCategoria(form.idCategoria, form);
+                setMensaje("Categoría actualizada correctamente");
+            } else {
+                await crearCategoria(form);
+                setMensaje("Categoría creada correctamente");
+            }
+            setForm(formInicial);
+            setModoEdicion(false);
+            cargarCategorias();
+        } catch (error) {
+            setMensaje(obtenerMensajeError(error));
+            console.error("Error al guardar categoría", error);
+        }
+    };
+
+    // Función para modificar las categorías desde el back-end
+    const handleModificar = (categoria: Categoria) => {
+        setForm(categoria);
+        setModoEdicion(true);
+    };
+
+    // Función para anular las categorías desde el back-end
+    const handleAnular = async (idCategoria: number) => {
+        const confirmar = window.confirm("¿Seguro que deseas anular esta categoría?");
+        if (!confirmar) return;
+        try {
+            await anularCategoria(idCategoria);
+            setMensaje("Categoría anulada correctamente");
+            cargarCategorias();
+        } catch (error) {
+            setMensaje(obtenerMensajeError(error));
+            console.error("Error al anular la categoría", error);
+        }
+    };
+
     return (
-      <div>
-        <h2>Ingresar/Modificar Categorías</h2>
-        {mensaje && <p>{mensaje}</p>}
-        <form>
-          <div>
-            <label htmlFor="nombre">Nombre:</label>
-            <input
-              type="text"
-              id="nombre"
-              name="nombre"
-              value={form.nombre}
-              onChange={handleChange}
-            />
-          </div>
-          <div>
-            <label htmlFor="descripcion">Descripción:</label>
-            <input
-              type="text"
-              id="descripcion"
-              name="descripcion"
-              value={form.descripcion}
-              onChange={handleChange}
-            />
-          </div>
-          <button type="submit">Guardar</button>
-        </form>
-        <h2>Listado de Categorías</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Descripción</th>
-              <th>Modificar</th>
-              <th>Eliminar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {categorias.map((categoria) => (
-              <tr key={categoria.idCategoria}>
-                <td>{categoria.nombre}</td>
-                <td>{categoria.descripcion}</td>
-                <td>
-                  <button>Modificar</button>
-                </td>
-                <td>
-                  <button>Eliminar</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        <div>
+            <h2>Ingresar/Modificar Categorías</h2>
+            {mensaje && <p>{mensaje}</p>}
+            <form onSubmit={handleSubmit}>
+                <div>
+                    <label htmlFor="nombre">Nombre:</label>
+                    <input
+                        type="text"
+                        id="nombre"
+                        name="nombre"
+                        value={form.nombre}
+                        onChange={handleChange}
+                    />
+                </div>
+                <div>
+                    <label htmlFor="descripcion">Descripción:</label>
+                    <input
+                        type="text"
+                        id="descripcion"
+                        name="descripcion"
+                        value={form.descripcion}
+                        onChange={handleChange}
+                    />
+                </div>
+                <button type="submit">Guardar</button>
+            </form>
+            <h2>Listado de Categorías</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Descripción</th>
+                        <th>Modificar</th>
+                        <th>Eliminar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {categorias.map((categoria) => (
+                        <tr key={categoria.idCategoria}>
+                            <td>{categoria.nombre}</td>
+                            <td>{categoria.descripcion}</td>
+                            <td>
+                                <button type="button" onClick={() => handleModificar(categoria)}>
+                                    Modificar
+                                </button>
+                            </td>
+                            <td>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        categoria.idCategoria !== null && handleAnular(categoria.idCategoria)
+                                    }
+                                >
+                                    Eliminar
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
     );
 }
 export default Categorias
-

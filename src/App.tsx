@@ -5,6 +5,7 @@ function App () {
     return(
         <Routes>
             <Route path="/categorias" element={<Categorias/>} />
+            <Route path="*" element={<div>Página no encontrada</div>} />
         </Routes>
     )
 }
