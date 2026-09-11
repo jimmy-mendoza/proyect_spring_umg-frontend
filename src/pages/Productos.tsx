@@ -1,23 +1,15 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import axios from "axios";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  Folder,
-  X,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
+import { Plus, Pencil, Trash2, Package, X, CheckCircle2, AlertCircle } from "lucide-react";
 
 import {
-  listarCategoriasActivas,
-  crearCategoria,
-  actualizarCategoria,
-  anularCategoria,
-} from "../services/categoriaService";
+  listarProductosActivos,
+  crearProducto,
+  actualizarProducto,
+  anularProducto
+} from "../services/productoService";
 
-import type { Categoria } from "../types/categoria";
+import type { Producto } from "../types/producto";
 
 // Importaciones de shadcn/ui
 import { Button } from "@/components/ui/button";
@@ -25,11 +17,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
 } from "@/components/ui/card";
 import {
   Table,
@@ -39,38 +31,46 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
-const formInicial: Categoria = {
-  idCategoria: null,
+const formInicial: Producto = {
+  idProducto: null,
   nombre: "",
   descripcion: "",
+  precio: 0,
+  stock: 0,
+  idCategoria: null
 };
 
-function Categorias() {
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [form, setForm] = useState<Categoria>(formInicial);
+function Productos() {
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [form, setForm] = useState<Producto>(formInicial);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [esError, setEsError] = useState(false);
 
-  const cargarCategorias = async () => {
+  const cargarProductos = async () => {
     try {
-      const respuesta = await listarCategoriasActivas();
-      setCategorias(respuesta.data);
+      const respuesta = await listarProductosActivos();
+      setProductos(respuesta.data);
     } catch (error) {
-      console.error("Error al listar categorias", error);
+      console.error("Error al listar productos", error);
     }
   };
 
   useEffect(() => {
-    cargarCategorias();
+    cargarProductos();
   }, []);
 
   const handleChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    const esNumerico = ["precio", "stock", "idCategoria"].includes(name);
+    setForm((prev) => ({
+      ...prev,
+      [name]: esNumerico ? (value === "" ? "" : Number(value)) : value
+    }));
   };
 
   const obtenerMensajeError = (error: unknown): string => {
@@ -86,26 +86,26 @@ function Categorias() {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
-      if (modoEdicion && form.idCategoria !== null) {
-        await actualizarCategoria(form.idCategoria, form);
-        setMensaje("Categoría actualizada correctamente");
+      if (modoEdicion && form.idProducto !== null) {
+        await actualizarProducto(form.idProducto, form);
+        setMensaje("Producto actualizado correctamente");
       } else {
-        await crearCategoria(form);
-        setMensaje("Categoría creada correctamente");
+        await crearProducto(form);
+        setMensaje("Producto creado correctamente");
       }
       setEsError(false);
       setForm(formInicial);
       setModoEdicion(false);
-      cargarCategorias();
+      cargarProductos();
     } catch (error) {
       setEsError(true);
       setMensaje(obtenerMensajeError(error));
-      console.error("Error al guardar categoría", error);
+      console.error("Error al guardar producto", error);
     }
   };
 
-  const handleModificar = (categoria: Categoria) => {
-    setForm(categoria);
+  const handleModificar = (producto: Producto) => {
+    setForm(producto);
     setModoEdicion(true);
     setMensaje("");
   };
@@ -116,20 +116,18 @@ function Categorias() {
     setMensaje("");
   };
 
-  const handleAnular = async (idCategoria: number) => {
-    const confirmar = window.confirm(
-      "¿Seguro que deseas anular esta categoría?",
-    );
+  const handleAnular = async (idProducto: number) => {
+    const confirmar = window.confirm("¿Seguro que deseas anular este producto?");
     if (!confirmar) return;
     try {
-      await anularCategoria(idCategoria);
+      await anularProducto(idProducto);
       setEsError(false);
-      setMensaje("Categoría anulada correctamente");
-      cargarCategorias();
+      setMensaje("Producto anulado correctamente");
+      cargarProductos();
     } catch (error) {
       setEsError(true);
       setMensaje(obtenerMensajeError(error));
-      console.error("Error al anular la categoría", error);
+      console.error("Error al anular el producto", error);
     }
   };
 
@@ -139,10 +137,10 @@ function Categorias() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Gestión de Categorías
+            Gestión de Productos
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Crea, edita y administra las categorías de tus productos.
+            Crea, edita y administra el inventario de tu catálogo.
           </p>
         </div>
       </div>
@@ -174,40 +172,82 @@ function Categorias() {
             ) : (
               <Plus className="w-5 h-5 text-primary" />
             )}
-            {modoEdicion ? "Modificar categoría" : "Crear nueva categoría"}
+            {modoEdicion ? "Modificar producto" : "Crear nuevo producto"}
           </CardTitle>
           <CardDescription>
             {modoEdicion
-              ? "Edita los campos necesarios y guarda los cambios para actualizar la categoría."
-              : "Ingresa los datos de la nueva categoría para organizarla en el sistema."}
+              ? "Edita los campos necesarios y guarda los cambios para actualizar el producto."
+              : "Ingresa los datos del nuevo producto para añadirlo al inventario."}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Nombre */}
-              <div className="space-y-2">
-                <Label htmlFor="nombre">Nombre de la categoría</Label>
+              <div className="space-y-2 lg:col-span-2">
+                <Label htmlFor="nombre">Nombre del producto</Label>
                 <Input
                   id="nombre"
                   name="nombre"
-                  placeholder="Ej. Periféricos, Electrónica, etc."
+                  placeholder="Ej. Teclado Mecánico RGB"
                   value={form.nombre}
                   onChange={handleChange}
                   required
                 />
               </div>
 
-              {/* Descripción */}
+              {/* ID Categoría */}
               <div className="space-y-2">
+                <Label htmlFor="idCategoria">ID Categoría</Label>
+                <Input
+                  type="number"
+                  id="idCategoria"
+                  name="idCategoria"
+                  placeholder="Ej. 1"
+                  value={form.idCategoria ?? ""}
+                  onChange={handleChange}
+                />
+              </div>
+
+              {/* Descripción */}
+              <div className="space-y-2 lg:col-span-3">
                 <Label htmlFor="descripcion">Descripción</Label>
                 <Textarea
                   id="descripcion"
                   name="descripcion"
-                  placeholder="Escribe una breve descripción de la categoría..."
+                  placeholder="Escribe detalles del producto..."
                   rows={2}
                   value={form.descripcion}
                   onChange={handleChange}
+                />
+              </div>
+
+              {/* Precio */}
+              <div className="space-y-2">
+                <Label htmlFor="precio">Precio (Q)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  id="precio"
+                  name="precio"
+                  placeholder="0.00"
+                  value={form.precio}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              {/* Stock */}
+              <div className="space-y-2">
+                <Label htmlFor="stock">Stock disponible</Label>
+                <Input
+                  type="number"
+                  id="stock"
+                  name="stock"
+                  placeholder="0"
+                  value={form.stock}
+                  onChange={handleChange}
+                  required
                 />
               </div>
             </div>
@@ -215,7 +255,7 @@ function Categorias() {
             {/* Acciones Formulario */}
             <div className="flex items-center gap-3 pt-2">
               <Button type="submit">
-                {modoEdicion ? "Guardar cambios" : "Crear categoría"}
+                {modoEdicion ? "Guardar cambios" : "Crear producto"}
               </Button>
               {modoEdicion && (
                 <Button
@@ -238,27 +278,22 @@ function Categorias() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-xl flex items-center gap-2">
-              <Folder className="w-5 h-5 text-muted-foreground" />
-              Listado de Categorías
+              <Package className="w-5 h-5 text-muted-foreground" />
+              Listado de Productos
             </CardTitle>
             <CardDescription className="mt-1">
-              Actualmente tienes {categorias.length}{" "}
-              {categorias.length === 1
-                ? "categoría registrada"
-                : "categorías registradas"}
-              .
+              Actualmente tienes {productos.length}{" "}
+              {productos.length === 1 ? "producto registrado" : "productos registrados"}.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
-          {categorias.length === 0 ? (
+          {productos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <Folder className="w-12 h-12 mx-auto stroke-1 mb-2 opacity-50" />
-              <p className="font-medium">
-                No hay categorías registradas todavía
-              </p>
+              <Package className="w-12 h-12 mx-auto stroke-1 mb-2 opacity-50" />
+              <p className="font-medium">No hay productos registrados todavía</p>
               <p className="text-sm opacity-75">
-                Agrega una utilizando el formulario superior.
+                Agrega uno utilizando el formulario superior.
               </p>
             </div>
           ) : (
@@ -267,22 +302,43 @@ function Categorias() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[80px]">ID</TableHead>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Descripción</TableHead>
+                    <TableHead>Producto</TableHead>
+                    <TableHead>Categoría</TableHead>
+                    <TableHead className="text-right">Precio</TableHead>
+                    <TableHead className="text-center">Stock</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {categorias.map((categoria) => (
-                    <TableRow key={categoria.idCategoria}>
+                  {productos.map((producto) => (
+                    <TableRow key={producto.idProducto}>
                       <TableCell className="font-mono text-muted-foreground text-xs">
-                        #{categoria.idCategoria}
+                        #{producto.idProducto}
                       </TableCell>
-                      <TableCell className="font-medium text-foreground">
-                        {categoria.nombre}
+                      <TableCell>
+                        <div className="font-medium text-foreground">
+                          {producto.nombre}
+                        </div>
+                        {producto.descripcion && (
+                          <div className="text-xs text-muted-foreground line-clamp-1">
+                            {producto.descripcion}
+                          </div>
+                        )}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {categoria.descripcion || "—"}
+                      <TableCell>
+                        <Badge variant="secondary">
+                          Cat. {producto.idCategoria ?? "N/A"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        Q{Number(producto.precio).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant={producto.stock > 0 ? "outline" : "destructive"}
+                        >
+                          {producto.stock} un.
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -290,7 +346,7 @@ function Categorias() {
                             size="icon"
                             variant="ghost"
                             title="Modificar"
-                            onClick={() => handleModificar(categoria)}
+                            onClick={() => handleModificar(producto)}
                           >
                             <Pencil className="w-4 h-4 text-muted-foreground" />
                           </Button>
@@ -300,8 +356,8 @@ function Categorias() {
                             title="Anular"
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
                             onClick={() =>
-                              categoria.idCategoria !== null &&
-                              handleAnular(categoria.idCategoria)
+                              producto.idProducto !== null &&
+                              handleAnular(producto.idProducto)
                             }
                           >
                             <Trash2 className="w-4 h-4" />
@@ -320,4 +376,4 @@ function Categorias() {
   );
 }
 
-export default Categorias;
+export default Productos;
