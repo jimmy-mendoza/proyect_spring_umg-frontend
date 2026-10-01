@@ -1,12 +1,27 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import axios from "axios";
-import { Plus, Pencil, Trash2, Package, X, CheckCircle2, AlertCircle } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import ExcelJS from "exceljs";
+
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Package,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  FileSpreadsheet,
+  Eye,
+} from "lucide-react";
 
 import {
   listarProductosActivos,
   crearProducto,
   actualizarProducto,
-  anularProducto
+  anularProducto,
 } from "../services/productoService";
 
 import type { Producto } from "../types/producto";
@@ -17,11 +32,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import {
   Table,
@@ -39,7 +54,7 @@ const formInicial: Producto = {
   descripcion: "",
   precio: 0,
   stock: 0,
-  idCategoria: null
+  idCategoria: null,
 };
 
 function Productos() {
@@ -63,13 +78,13 @@ function Productos() {
   }, []);
 
   const handleChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = e.target;
     const esNumerico = ["precio", "stock", "idCategoria"].includes(name);
     setForm((prev) => ({
       ...prev,
-      [name]: esNumerico ? (value === "" ? "" : Number(value)) : value
+      [name]: esNumerico ? (value === "" ? "" : Number(value)) : value,
     }));
   };
 
@@ -117,7 +132,9 @@ function Productos() {
   };
 
   const handleAnular = async (idProducto: number) => {
-    const confirmar = window.confirm("¿Seguro que deseas anular este producto?");
+    const confirmar = window.confirm(
+      "¿Seguro que deseas anular este producto?",
+    );
     if (!confirmar) return;
     try {
       await anularProducto(idProducto);
@@ -131,15 +148,140 @@ function Productos() {
     }
   };
 
+  // --- Funciones para PDF y Excel ---
+
+  const generarPDF = () => {
+    const doc = new jsPDF();
+    doc.text("Listado de Productos", 14, 15);
+
+    const columnas = [
+      "ID",
+      "Producto",
+      "Descripción",
+      "Categoría",
+      "Precio (Q)",
+      "Stock",
+    ];
+    const filas = productos.map((prod) => [
+      prod.idProducto ?? "-",
+      prod.nombre,
+      prod.descripcion || "—",
+      prod.idCategoria ? `Cat. ${prod.idCategoria}` : "Sin Cat.",
+      `Q${Number(prod.precio).toFixed(2)}`,
+      `${prod.stock} un.`,
+    ]);
+
+    autoTable(doc, {
+      head: [columnas],
+      body: filas,
+      startY: 20,
+    });
+
+    return doc;
+  };
+
+  const exportarPDF = () => {
+    const doc = generarPDF();
+    doc.save("productos.pdf");
+  };
+
+  const verPDF = () => {
+    const doc = generarPDF();
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+  };
+
+  const exportarExcel = async () => {
+    const libro = new ExcelJS.Workbook();
+    const hoja = libro.addWorksheet("Productos");
+
+    hoja.addRow(["Listado de Productos"]).font = { size: 16, bold: true };
+    hoja.addRow(["Fecha: " + new Date().toLocaleDateString()]);
+    hoja.addRow([]);
+
+    const encabezado = hoja.addRow([
+      "ID",
+      "Nombre",
+      "Descripción",
+      "Categoría",
+      "Precio (Q)",
+      "Stock",
+    ]);
+
+    encabezado.eachCell((celda) => {
+      celda.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      celda.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF0F172A" },
+      };
+      celda.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+
+    productos.forEach((prod, indice) => {
+      const fila = hoja.addRow([
+        prod.idProducto,
+        prod.nombre,
+        prod.descripcion || "—",
+        prod.idCategoria ? `Cat. ${prod.idCategoria}` : "N/A",
+        Number(prod.precio),
+        Number(prod.stock),
+      ]);
+
+      // Formato numérico de moneda en Quetzales
+      fila.getCell(5).numFmt = '"Q"#,##0.00';
+
+      fila.eachCell((celda) => {
+        celda.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+        if (indice % 2 === 1) {
+          celda.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFF1F5F9" },
+          };
+        }
+      });
+    });
+
+    hoja.getColumn(1).width = 10;
+    hoja.getColumn(2).width = 30;
+    hoja.getColumn(3).width = 40;
+    hoja.getColumn(4).width = 15;
+    hoja.getColumn(5).width = 15;
+    hoja.getColumn(6).width = 12;
+
+    const buffer = await libro.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = "productos.xlsx";
+    enlace.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
       {/* Encabezado Principal */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground animate-blurred-fade-in animate-duration-slow">
             Gestión de Productos
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1 animate-blurred-fade-in animate-duration-slow">
             Crea, edita y administra el inventario de tu catálogo.
           </p>
         </div>
@@ -164,7 +306,7 @@ function Productos() {
       )}
 
       {/* Formulario */}
-      <Card>
+      <Card className="animate-slide-in-left">
         <CardHeader>
           <CardTitle className="text-xl flex items-center gap-2">
             {modoEdicion ? (
@@ -254,7 +396,7 @@ function Productos() {
 
             {/* Acciones Formulario */}
             <div className="flex items-center gap-3 pt-2">
-              <Button type="submit">
+              <Button type="submit" className={"cursor-pointer"}>
                 {modoEdicion ? "Guardar cambios" : "Crear producto"}
               </Button>
               {modoEdicion && (
@@ -262,7 +404,7 @@ function Productos() {
                   type="button"
                   variant="outline"
                   onClick={handleCancelar}
-                  className="flex items-center gap-1"
+                  className="flex items-center gap-1 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                   Cancelar
@@ -275,7 +417,7 @@ function Productos() {
 
       {/* Tabla de Resultados */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <CardTitle className="text-xl flex items-center gap-2">
               <Package className="w-5 h-5 text-muted-foreground" />
@@ -283,15 +425,43 @@ function Productos() {
             </CardTitle>
             <CardDescription className="mt-1">
               Actualmente tienes {productos.length}{" "}
-              {productos.length === 1 ? "producto registrado" : "productos registrados"}.
+              {productos.length === 1
+                ? "producto registrado"
+                : "productos registrados"}
+              .
             </CardDescription>
           </div>
+
+          {/* Botonera de Reportes */}
+          <div className="flex gap-2">
+            <button
+              onClick={exportarPDF}
+              className="bg-slate-800 transition hover:bg-sky-700 text-white font-medium py-1.5 px-3 rounded text-sm cursor-pointer"
+            >
+              Exportar PDF
+            </button>
+            <button
+              onClick={exportarExcel}
+              className="bg-slate-800 transition hover:bg-emerald-700 text-white font-medium py-1.5 px-3 rounded text-sm cursor-pointer"
+            >
+              Exportar Excel
+            </button>
+            <button
+              onClick={verPDF}
+              className="bg-slate-800 transition hover:bg-indigo-700 text-white font-medium py-1.5 px-3 rounded text-sm cursor-pointer"
+            >
+              Ver PDF
+            </button>
+          </div>
         </CardHeader>
+
         <CardContent>
           {productos.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Package className="w-12 h-12 mx-auto stroke-1 mb-2 opacity-50" />
-              <p className="font-medium">No hay productos registrados todavía</p>
+              <p className="font-medium">
+                No hay productos registrados todavía
+              </p>
               <p className="text-sm opacity-75">
                 Agrega uno utilizando el formulario superior.
               </p>
@@ -335,7 +505,9 @@ function Productos() {
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge
-                          variant={producto.stock > 0 ? "outline" : "destructive"}
+                          variant={
+                            producto.stock > 0 ? "outline" : "destructive"
+                          }
                         >
                           {producto.stock} un.
                         </Badge>
@@ -346,6 +518,7 @@ function Productos() {
                             size="icon"
                             variant="ghost"
                             title="Modificar"
+                            className={" cursor-pointer"}
                             onClick={() => handleModificar(producto)}
                           >
                             <Pencil className="w-4 h-4 text-muted-foreground" />

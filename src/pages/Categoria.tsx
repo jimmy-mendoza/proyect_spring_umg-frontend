@@ -18,6 +18,8 @@ import {
 } from "../services/categoriaService";
 
 import type { Categoria } from "../types/categoria";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // Importaciones de shadcn/ui
 import { Button } from "@/components/ui/button";
@@ -39,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import ExcelJS from "exceljs";
 
 const formInicial: Categoria = {
   idCategoria: null,
@@ -133,15 +136,119 @@ function Categorias() {
     }
   };
 
+  // Función helper para construir el documento jsPDF
+  const generarPDF = () => {
+    const doc = new jsPDF();
+
+    // Título del reporte
+    doc.text("Listado de Categorías", 14, 15);
+
+    // Preparar los datos
+    const columnas = ["Nombre", "Descripción"];
+    const filas = categorias.map((categoria) => [
+      categoria.nombre,
+      categoria.descripcion,
+    ]);
+
+    // Dibujar la tabla
+    autoTable(doc, {
+      head: [columnas],
+      body: filas,
+      startY: 20,
+    });
+
+    return doc;
+  };
+
+  // Descargar el PDF directamente
+  const exportarPDF = () => {
+    const doc = generarPDF();
+    doc.save("categorias.pdf");
+  };
+
+  // Abrir el PDF en una pestaña nueva
+  const verPDF = () => {
+    const doc = generarPDF();
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+  };
+
+  // Descargar el reporte como archivo Excel
+  const exportarExcel = async () => {
+    // 1. Crear el libro y la hoja
+    const libro = new ExcelJS.Workbook();
+    const hoja = libro.addWorksheet("Categorías");
+
+    // 2. Título y fecha
+    hoja.addRow(["Listado de Categorías"]).font = { size: 16, bold: true };
+    hoja.addRow(["Fecha: " + new Date().toLocaleDateString()]);
+    hoja.addRow([]); // fila vacía de separación
+
+    // 3. Encabezados de la tabla (mismos colores que el PDF)
+    const encabezado = hoja.addRow(["Nombre", "Descripción"]);
+    encabezado.eachCell((celda) => {
+      celda.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      celda.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF166534" },
+      };
+      celda.border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    });
+
+    // 4. Filas de datos
+    categorias.forEach((categoria, indice) => {
+      const fila = hoja.addRow([categoria.nombre, categoria.descripcion]);
+      fila.eachCell((celda) => {
+        celda.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+        // filas alternadas en verde claro, como en el PDF
+        if (indice % 2 === 1) {
+          celda.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFDCFCE7" },
+          };
+        }
+      });
+    });
+
+    // 5. Ancho de columnas
+    hoja.getColumn(1).width = 30;
+    hoja.getColumn(2).width = 60;
+
+    // 6. Generar el archivo y descargarlo
+    const buffer = await libro.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = "categorias.xlsx";
+    enlace.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
       {/* Encabezado Principal */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground animate-blurred-fade-in animate-duration-slow">
             Gestión de Categorías
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1 animate-blurred-fade-in animate-duration-slow">
             Crea, edita y administra las categorías de tus productos.
           </p>
         </div>
@@ -166,7 +273,7 @@ function Categorias() {
       )}
 
       {/* Formulario */}
-      <Card>
+      <Card className="animate-slide-in-left ">
         <CardHeader>
           <CardTitle className="text-xl flex items-center gap-2">
             {modoEdicion ? (
@@ -214,7 +321,10 @@ function Categorias() {
 
             {/* Acciones Formulario */}
             <div className="flex items-center gap-3 pt-2">
-              <Button type="submit">
+              <Button
+                type="submit"
+                className="bg-slate-800 flex items-center gap-1 cursor-pointer"
+              >
                 {modoEdicion ? "Guardar cambios" : "Crear categoría"}
               </Button>
               {modoEdicion && (
@@ -222,7 +332,7 @@ function Categorias() {
                   type="button"
                   variant="outline"
                   onClick={handleCancelar}
-                  className="flex items-center gap-1"
+                  className="flex items-center gap-1 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                   Cancelar
@@ -235,7 +345,7 @@ function Categorias() {
 
       {/* Tabla de Resultados */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex items-center justify-start ">
           <div>
             <CardTitle className="text-xl flex items-center gap-2">
               <Folder className="w-5 h-5 text-muted-foreground" />
@@ -248,6 +358,28 @@ function Categorias() {
                 : "categorías registradas"}
               .
             </CardDescription>
+
+            <div className="mt-2 gap-6">
+              <button
+                onClick={exportarPDF}
+                className="bg-slate-800 transition hover:bg-sky-700 text-white font-bold py-2 px-4 rounded mb-4 cursor-pointer"
+              >
+                Exportar a PDF
+              </button>
+
+              <button
+                onClick={exportarExcel}
+                className="bg-slate-800 transition hover:bg-green-700 text-white font-bold py-2 px-4 rounded mb-4 ml-2 cursor-pointer"
+              >
+                Exportar a Excel
+              </button>
+              <button
+                onClick={verPDF}
+                className="bg-slate-800 transition hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded mb-4 ml-2 cursor-pointer"
+              >
+                Ver PDF
+              </button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -290,6 +422,7 @@ function Categorias() {
                             size="icon"
                             variant="ghost"
                             title="Modificar"
+                            className={"cursor-pointer "}
                             onClick={() => handleModificar(categoria)}
                           >
                             <Pencil className="w-4 h-4 text-muted-foreground" />
@@ -298,7 +431,7 @@ function Categorias() {
                             size="icon"
                             variant="ghost"
                             title="Anular"
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                             onClick={() =>
                               categoria.idCategoria !== null &&
                               handleAnular(categoria.idCategoria)
